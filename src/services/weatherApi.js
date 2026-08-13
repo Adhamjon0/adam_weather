@@ -5,26 +5,96 @@ const BASE_URL =
 
 
 // ========================================
-// CURRENT WEATHER BY CITY
+// API REQUEST HELPER
 // ========================================
 
-export async function getCurrentWeather(city) {
+async function request(endpoint) {
 
-    const response = await fetch(
-        `${BASE_URL}/weather?q=${encodeURIComponent(city)}&appid=${API_KEY}&units=metric`
-    );
-
-
-    if (!response.ok) {
+    if (!API_KEY) {
 
         throw new Error(
-            "City weather data unavailable"
+            "OpenWeather API key is missing."
         );
 
     }
 
 
-    return await response.json();
+    const controller =
+        new AbortController();
+
+    const timeout =
+        setTimeout(() => {
+            controller.abort();
+        }, 15000);
+
+
+    try {
+
+        const response = await fetch(
+            `${BASE_URL}${endpoint}`,
+            {
+                signal: controller.signal,
+            }
+        );
+
+
+        const data =
+            await response.json().catch(() => null);
+
+
+        if (!response.ok) {
+
+            const message =
+                data?.message ||
+                "Weather data unavailable.";
+
+            throw new Error(message);
+
+        }
+
+
+        return data;
+
+    } catch (error) {
+
+        if (error.name === "AbortError") {
+
+            throw new Error(
+                "Weather request timed out. Please try again."
+            );
+
+        }
+
+
+        throw error;
+
+    } finally {
+
+        clearTimeout(timeout);
+
+    }
+
+}
+
+
+// ========================================
+// CURRENT WEATHER BY CITY
+// ========================================
+
+export async function getCurrentWeather(city) {
+
+    if (!city?.trim()) {
+
+        throw new Error(
+            "Please enter a city name."
+        );
+
+    }
+
+
+    return await request(
+        `/weather?q=${encodeURIComponent(city.trim())}&appid=${API_KEY}&units=metric`
+    );
 
 }
 
@@ -38,21 +108,21 @@ export async function getCurrentWeatherByCoordinates(
     longitude
 ) {
 
-    const response = await fetch(
-        `${BASE_URL}/weather?lat=${latitude}&lon=${longitude}&appid=${API_KEY}&units=metric`
-    );
-
-
-    if (!response.ok) {
+    if (
+        !Number.isFinite(Number(latitude)) ||
+        !Number.isFinite(Number(longitude))
+    ) {
 
         throw new Error(
-            "Weather data unavailable"
+            "Invalid location coordinates."
         );
 
     }
 
 
-    return await response.json();
+    return await request(
+        `/weather?lat=${latitude}&lon=${longitude}&appid=${API_KEY}&units=metric`
+    );
 
 }
 
@@ -67,22 +137,21 @@ export async function getForecast(
     longitude
 ) {
 
-    const response = await fetch(
-        `${BASE_URL}/forecast?lat=${latitude}&lon=${longitude}&appid=${API_KEY}&units=metric`
-    );
-
-
-    if (!response.ok) {
+    if (
+        !Number.isFinite(Number(latitude)) ||
+        !Number.isFinite(Number(longitude))
+    ) {
 
         throw new Error(
-            "Forecast data unavailable"
+            "Invalid forecast coordinates."
         );
 
     }
 
 
-    const data =
-        await response.json();
+    const data = await request(
+        `/forecast?lat=${latitude}&lon=${longitude}&appid=${API_KEY}&units=metric`
+    );
 
 
     // ========================================
@@ -90,7 +159,7 @@ export async function getForecast(
     // ========================================
 
     const hourly =
-        Array.isArray(data.list)
+        Array.isArray(data?.list)
             ? data.list.slice(0, 12)
             : [];
 
@@ -102,7 +171,7 @@ export async function getForecast(
     const days = {};
 
 
-    if (Array.isArray(data.list)) {
+    if (Array.isArray(data?.list)) {
 
         data.list.forEach((item) => {
 
@@ -133,84 +202,90 @@ export async function getForecast(
     // CREATE DAILY FORECAST
     // ========================================
 
-    const daily = Object.keys(days)
-        .slice(0, 5)
-        .map((dayKey) => {
+    const daily =
+        Object.keys(days)
+            .slice(0, 5)
+            .map((dayKey) => {
 
-            const items =
-                days[dayKey];
-
-
-            if (!items.length) {
-                return null;
-            }
+                const items =
+                    days[dayKey];
 
 
-            // Temperatures for this day
+                if (!items.length) {
+                    return null;
+                }
 
-            const temperatures =
-                items
-                    .map(
-                        (item) =>
+
+                // --------------------------------
+                // TEMPERATURES
+                // --------------------------------
+
+                const temperatures =
+                    items
+                        .map((item) =>
                             Number(
                                 item?.main?.temp
                             )
-                    )
-                    .filter(
-                        (temperature) =>
+                        )
+                        .filter((temperature) =>
                             Number.isFinite(
                                 temperature
                             )
+                        );
+
+
+                // --------------------------------
+                // MIDDLE FORECAST
+                // --------------------------------
+
+                const middleIndex =
+                    Math.floor(
+                        items.length / 2
                     );
 
 
-            // Middle forecast item
-
-            const middleIndex =
-                Math.floor(
-                    items.length / 2
-                );
+                const middle =
+                    items[middleIndex] ||
+                    items[0];
 
 
-            const middle =
-                items[middleIndex] ||
-                items[0];
+                return {
+
+                    date: dayKey,
+
+                    dt: middle?.dt ?? null,
+
+                    temp: {
+
+                        day:
+                            Number(
+                                middle?.main?.temp ?? 0
+                            ),
+
+                        min:
+                            temperatures.length
+                                ? Math.min(
+                                    ...temperatures
+                                )
+                                : 0,
+
+                        max:
+                            temperatures.length
+                                ? Math.max(
+                                    ...temperatures
+                                )
+                                : 0,
+
+                    },
 
 
-            return {
+                    weather:
+                        middle?.weather || [],
 
-                dt: middle.dt,
+                };
 
-                temp: {
-
-                    day:
-                        Number(
-                            middle?.main?.temp ?? 0
-                        ),
-
-                    min:
-                        temperatures.length
-                            ? Math.min(
-                                ...temperatures
-                            )
-                            : 0,
-
-                    max:
-                        temperatures.length
-                            ? Math.max(
-                                ...temperatures
-                            )
-                            : 0,
-
-                },
-
-                weather:
-                    middle?.weather || [],
-
-            };
-
-        })
-        .filter(Boolean);
+            })
+            .filter(Boolean);
 
 
     // ========================================

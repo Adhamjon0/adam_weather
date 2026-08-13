@@ -1,0 +1,182 @@
+.location-button {
+    height: 44px;
+    min-width: 142px;
+
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    gap: 9px;
+
+    padding: 0 16px;
+
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 13px;
+
+    background: rgba(255, 255, 255, 0.045);
+
+    color: #cbd5e1;
+
+    font-family: "Manrope", sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+
+    cursor: pointer;
+
+    transition: 0.25s ease;
+}
+
+
+.location-button:hover:not(:disabled) {
+    background: rgba(56, 189, 248, 0.09);
+
+    border-color: rgba(56, 189, 248, 0.3);
+
+    color: #f8fafc;
+
+    transform: translateY(-2px);
+}
+
+
+.location-button:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+
+/* ========================================
+   DESKTOP ICON
+======================================== */
+
+.location-desktop-icon {
+    width: 18px;
+    height: 18px;
+
+    flex-shrink: 0;
+
+    color: #38bdf8;
+
+    display: block;
+}
+
+
+/* ========================================
+   TEXT
+======================================== */
+
+.location-button-text {
+    display: inline-block;
+
+    white-space: nowrap;
+}
+
+
+/* ========================================
+   MOBILE ICON
+======================================== */
+
+.location-mobile-icon {
+    display: none;
+
+    width: 20px;
+    height: 20px;
+
+    color: #38bdf8;
+
+    flex-shrink: 0;
+}
+
+
+/* ========================================
+   LOADING
+======================================== */
+
+.location-icon--loading {
+    animation: location-spin 1s linear infinite;
+}
+
+
+@keyframes location-spin {
+
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+
+}
+
+
+/* ========================================
+   MOBILE
+======================================== */
+
+@media (max-width: 700px) {
+
+    .location-button {
+
+        width: 44px;
+        min-width: 44px;
+
+        height: 44px;
+
+        padding: 0;
+
+        gap: 0;
+
+        border-radius: 13px;
+
+    }
+
+
+    /* DESKTOP ELEMENTS HIDDEN */
+
+    .location-desktop-icon,
+    .location-button-text {
+
+        display: none;
+
+    }
+
+
+    /* MOBILE ICON SHOWN */
+
+    .location-mobile-icon {
+
+        display: block;
+
+        width: 20px;
+        height: 20px;
+
+    }
+
+}
+
+
+/* ========================================
+   SMALL MOBILE
+======================================== */
+
+@media (max-width: 420px) {
+
+    .location-button {
+
+        width: 40px;
+        min-width: 40px;
+
+        height: 40px;
+
+        border-radius: 12px;
+
+    }
+
+
+    .location-mobile-icon {
+
+        width: 19px;
+        height: 19px;
+
+    }
+
+}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import {
     FiMapPin,
@@ -18,6 +18,9 @@ import LocationButton from "../components/LocationButton";
 import "./Home.css";
 
 
+const DEFAULT_CITY = "Samarqand";
+
+
 const Home = () => {
 
     const [weather, setWeather] = useState(null);
@@ -34,60 +37,47 @@ const Home = () => {
 
 
     // ========================================
-    // LOAD WEATHER
+    // UPDATE FORECAST
     // ========================================
 
-    const loadWeather = async (city) => {
+    const updateForecast = useCallback(
+        async (latitude, longitude) => {
 
-        try {
-
-            setLoading(true);
-
-            setError("");
+            const lat = Number(latitude);
+            const lon = Number(longitude);
 
 
-            // CURRENT WEATHER
+            if (
+                !Number.isFinite(lat) ||
+                !Number.isFinite(lon)
+            ) {
 
-            const current =
-                await getCurrentWeather(city);
+                setHourly([]);
+                setForecast([]);
 
+                return;
 
-            setWeather(current);
+            }
 
-
-            // FORECAST
 
             try {
 
-                const {
-                    lat,
-                    lon
-                } = current.coord;
-
-
                 const forecastData =
-                    await getForecast(
-                        lat,
-                        lon
-                    );
+                    await getForecast(lat, lon);
 
-
-                // HOURLY
 
                 setHourly(
                     Array.isArray(
-                        forecastData.hourly
+                        forecastData?.hourly
                     )
                         ? forecastData.hourly.slice(0, 12)
                         : []
                 );
 
 
-                // DAILY
-
                 setForecast(
                     Array.isArray(
-                        forecastData.daily
+                        forecastData?.daily
                     )
                         ? forecastData.daily.slice(0, 5)
                         : []
@@ -103,48 +93,235 @@ const Home = () => {
 
 
                 setHourly([]);
-
                 setForecast([]);
 
             }
 
-
-        } catch (weatherError) {
-
-            console.error(
-                "Weather error:",
-                weatherError
-            );
-
-
-            setWeather(null);
-
-            setHourly([]);
-
-            setForecast([]);
-
-
-            setError(
-                "Unable to load weather data."
-            );
-
-
-        } finally {
-
-            setLoading(false);
-
-        }
-
-    };
+        },
+        []
+    );
 
 
     // ========================================
-    // DEFAULT CITY
+    // APPLY WEATHER
+    // ========================================
+
+    const applyWeather = useCallback(
+        async (weatherData) => {
+
+            if (!weatherData) {
+
+                throw new Error(
+                    "Weather data is unavailable."
+                );
+
+            }
+
+
+            setWeather(weatherData);
+
+
+            const latitude =
+                weatherData?.coord?.lat;
+
+            const longitude =
+                weatherData?.coord?.lon;
+
+
+            await updateForecast(
+                latitude,
+                longitude
+            );
+
+        },
+        [updateForecast]
+    );
+
+
+    // ========================================
+    // LOAD WEATHER BY CITY
+    // ========================================
+
+    const loadWeather = useCallback(
+        async (city) => {
+
+            const cleanCity =
+                city?.trim();
+
+
+            if (!cleanCity) {
+                return;
+            }
+
+
+            try {
+
+                setLoading(true);
+
+                setError("");
+
+
+                const currentWeather =
+                    await getCurrentWeather(
+                        cleanCity
+                    );
+
+
+                await applyWeather(
+                    currentWeather
+                );
+
+
+            } catch (weatherError) {
+
+                console.error(
+                    "Weather error:",
+                    weatherError
+                );
+
+
+                setWeather(null);
+
+                setHourly([]);
+
+                setForecast([]);
+
+
+                setError(
+                    weatherError?.message ||
+                    "Unable to load weather data."
+                );
+
+
+            } finally {
+
+                setLoading(false);
+
+            }
+
+        },
+        [applyWeather]
+    );
+
+
+    // ========================================
+    // INITIAL WEATHER
     // ========================================
 
     useEffect(() => {
 
-        loadWeather("Samarqand");
+        let cancelled = false;
+
+
+        const initializeWeather = async () => {
+
+            try {
+
+                setLoading(true);
+
+                setError("");
+
+
+                const currentWeather =
+                    await getCurrentWeather(
+                        DEFAULT_CITY
+                    );
+
+
+                if (cancelled) {
+                    return;
+                }
+
+
+                setWeather(
+                    currentWeather
+                );
+
+
+                const latitude =
+                    currentWeather?.coord?.lat;
+
+                const longitude =
+                    currentWeather?.coord?.lon;
+
+
+                const forecastData =
+                    await getForecast(
+                        Number(latitude),
+                        Number(longitude)
+                    );
+
+
+                if (cancelled) {
+                    return;
+                }
+
+
+                setHourly(
+                    Array.isArray(
+                        forecastData?.hourly
+                    )
+                        ? forecastData.hourly.slice(0, 12)
+                        : []
+                );
+
+
+                setForecast(
+                    Array.isArray(
+                        forecastData?.daily
+                    )
+                        ? forecastData.daily.slice(0, 5)
+                        : []
+                );
+
+
+            } catch (initialError) {
+
+                if (cancelled) {
+                    return;
+                }
+
+
+                console.error(
+                    "Initial weather error:",
+                    initialError
+                );
+
+
+                setWeather(null);
+
+                setHourly([]);
+
+                setForecast([]);
+
+
+                setError(
+                    initialError?.message ||
+                    "Unable to load weather data."
+                );
+
+
+            } finally {
+
+                if (!cancelled) {
+
+                    setLoading(false);
+
+                }
+
+            }
+
+        };
+
+
+        initializeWeather();
+
+
+        return () => {
+
+            cancelled = true;
+
+        };
 
     }, []);
 
@@ -162,7 +339,7 @@ const Home = () => {
             search.trim();
 
 
-        if (!city) {
+        if (!city || loading) {
             return;
         }
 
@@ -173,6 +350,46 @@ const Home = () => {
         setSearch("");
 
     };
+
+
+    // ========================================
+    // MY LOCATION
+    // ========================================
+
+    const handleLocationWeather =
+        async (newWeather) => {
+
+            try {
+
+                setLoading(true);
+
+                setError("");
+
+
+                await applyWeather(
+                    newWeather
+                );
+
+
+            } catch (locationError) {
+
+                console.error(
+                    "Location weather error:",
+                    locationError
+                );
+
+
+                setError(
+                    "Unable to update weather for your location."
+                );
+
+            } finally {
+
+                setLoading(false);
+
+            }
+
+        };
 
 
     // ========================================
@@ -193,28 +410,23 @@ const Home = () => {
             case "01n":
                 return "🌙";
 
-
             case "02d":
                 return "🌤️";
 
             case "02n":
                 return "☁️";
 
-
             case "03d":
             case "03n":
                 return "☁️";
-
 
             case "04d":
             case "04n":
                 return "☁️";
 
-
             case "09d":
             case "09n":
                 return "🌧️";
-
 
             case "10d":
                 return "🌦️";
@@ -222,21 +434,17 @@ const Home = () => {
             case "10n":
                 return "🌧️";
 
-
             case "11d":
             case "11n":
                 return "⛈️";
-
 
             case "13d":
             case "13n":
                 return "❄️";
 
-
             case "50d":
             case "50n":
                 return "🌫️";
-
 
             default:
                 return "🌤️";
@@ -302,6 +510,11 @@ const Home = () => {
         }
 
 
+        if (!timestamp) {
+            return "--";
+        }
+
+
         return new Date(
             timestamp * 1000
         ).toLocaleDateString(
@@ -325,6 +538,11 @@ const Home = () => {
 
         if (index === 0) {
             return "Now";
+        }
+
+
+        if (!timestamp) {
+            return "--:--";
         }
 
 
@@ -362,8 +580,6 @@ const Home = () => {
             <nav className="weather-navbar">
 
 
-                {/* LOGO */}
-
                 <div className="weather-logo">
 
                     <div className="weather-logo-icon">
@@ -386,21 +602,18 @@ const Home = () => {
                 </div>
 
 
-                {/* LOCATION */}
-
                 <div className="navbar-location">
 
                     <FiMapPin />
 
-
                     <span>
 
                         {weather
-                            ? `${weather.name}${weather.sys?.country
+                            ? `${weather.name || "Unknown"}${weather.sys?.country
                                 ? `, ${weather.sys.country}`
                                 : ""
                             }`
-                            : "Samarqand"
+                            : DEFAULT_CITY
                         }
 
                     </span>
@@ -408,77 +621,17 @@ const Home = () => {
                 </div>
 
 
-                {/* MY LOCATION */}
-
                 <LocationButton
-                    onWeatherUpdate={async (newWeather) => {
-
-                        setWeather(newWeather);
-
-                        setError("");
-
-
-                        try {
-
-                            const {
-                                lat,
-                                lon
-                            } = newWeather.coord;
-
-
-                            const forecastData =
-                                await getForecast(
-                                    lat,
-                                    lon
-                                );
-
-
-                            setHourly(
-                                Array.isArray(
-                                    forecastData.hourly
-                                )
-                                    ? forecastData.hourly.slice(
-                                        0,
-                                        12
-                                    )
-                                    : []
-                            );
-
-
-                            setForecast(
-                                Array.isArray(
-                                    forecastData.daily
-                                )
-                                    ? forecastData.daily.slice(
-                                        0,
-                                        5
-                                    )
-                                    : []
-                            );
-
-
-                        } catch (forecastError) {
-
-                            console.warn(
-                                "Location forecast unavailable:",
-                                forecastError
-                            );
-
-
-                            setHourly([]);
-
-                            setForecast([]);
-
-                        }
-
-                    }}
+                    onWeatherUpdate={
+                        handleLocationWeather
+                    }
                 />
 
             </nav>
 
 
             {/* ========================================
-                MAIN CONTENT
+                MAIN
             ======================================== */}
 
             <section className="weather-container">
@@ -503,7 +656,8 @@ const Home = () => {
                             Weather in{" "}
 
                             <span>
-                                {weather?.name || "Samarqand"}
+                                {weather?.name ||
+                                    DEFAULT_CITY}
                             </span>
 
                         </h1>
@@ -538,10 +692,17 @@ const Home = () => {
                                 )
                             }
                             placeholder="Search city..."
+                            aria-label="Search city"
                         />
 
 
-                        <button type="submit">
+                        <button
+                            type="submit"
+                            disabled={
+                                loading ||
+                                !search.trim()
+                            }
+                        >
                             Search
                         </button>
 
@@ -574,7 +735,6 @@ const Home = () => {
                     <section className="weather-loading">
 
                         <div className="loading-spinner"></div>
-
 
                         <p>
                             Loading weather...
@@ -610,7 +770,8 @@ const Home = () => {
 
 
                                         <h2>
-                                            {weather.name}
+                                            {weather.name ||
+                                                "Unknown"}
                                         </h2>
 
                                     </div>
@@ -624,8 +785,6 @@ const Home = () => {
 
                                 </div>
 
-
-                                {/* TEMPERATURE */}
 
                                 <div className="temperature-section">
 
@@ -654,12 +813,14 @@ const Home = () => {
 
                                         <strong>
 
-                                            {weather.weather?.[0]?.description
+                                            {weather.weather?.[0]
+                                                ?.description
                                                 ?.replace(
                                                     /\b\w/g,
                                                     (letter) =>
                                                         letter.toUpperCase()
-                                                )}
+                                                ) ||
+                                                "Unknown"}
 
                                         </strong>
 
@@ -669,7 +830,8 @@ const Home = () => {
                                             Feels like{" "}
 
                                             {Math.round(
-                                                weather.main?.feels_like ?? 0
+                                                weather.main
+                                                    ?.feels_like ?? 0
                                             )}
 
                                             °
@@ -683,7 +845,7 @@ const Home = () => {
                             </div>
 
 
-                            {/* CURRENT STATS */}
+                            {/* STATS */}
 
                             <div className="current-weather-side">
 
@@ -694,11 +856,9 @@ const Home = () => {
                                         HUMIDITY
                                     </span>
 
-
                                     <strong>
-
-                                        {weather.main?.humidity ?? 0}%
-
+                                        {weather.main
+                                            ?.humidity ?? 0}%
                                     </strong>
 
                                 </div>
@@ -710,11 +870,13 @@ const Home = () => {
                                         WIND
                                     </span>
 
-
                                     <strong>
 
                                         {Math.round(
-                                            (weather.wind?.speed ?? 0) * 3.6
+                                            (
+                                                weather.wind
+                                                    ?.speed ?? 0
+                                            ) * 3.6
                                         )}
 
                                         km/h
@@ -730,18 +892,14 @@ const Home = () => {
                                         VISIBILITY
                                     </span>
 
-
                                     <strong>
 
                                         {weather.visibility
-
                                             ? `${(
-                                                weather.visibility / 1000
+                                                weather.visibility /
+                                                1000
                                             ).toFixed(1)} km`
-
-                                            : "N/A"
-
-                                        }
+                                            : "N/A"}
 
                                     </strong>
 
@@ -754,10 +912,12 @@ const Home = () => {
                                         PRESSURE
                                     </span>
 
-
                                     <strong>
 
-                                        {weather.main?.pressure ?? 0} hPa
+                                        {weather.main
+                                            ?.pressure ?? 0}
+
+                                        {" "}hPa
 
                                     </strong>
 
@@ -769,7 +929,7 @@ const Home = () => {
 
 
                         {/* ========================================
-                            HOURLY FORECAST
+                            HOURLY
                         ======================================== */}
 
                         {hourly.length > 0 && (
@@ -779,13 +939,11 @@ const Home = () => {
 
                                 <div className="section-header">
 
-
                                     <div>
 
                                         <p>
                                             HOURLY FORECAST
                                         </p>
-
 
                                         <h2>
                                             Next 12 hours
@@ -798,7 +956,6 @@ const Home = () => {
 
                                 <div className="hourly-scroll">
 
-
                                     {hourly.map(
                                         (hour, index) => (
 
@@ -807,11 +964,11 @@ const Home = () => {
                                                         ? "active"
                                                         : ""
                                                     }`}
-                                                key={hour.dt}
+                                                key={
+                                                    hour.dt ||
+                                                    index
+                                                }
                                             >
-
-
-                                                {/* TIME */}
 
                                                 <span className="hourly-time">
 
@@ -823,8 +980,6 @@ const Home = () => {
                                                 </span>
 
 
-                                                {/* ICON */}
-
                                                 <div className="hourly-icon">
 
                                                     {getWeatherIcon(
@@ -834,13 +989,12 @@ const Home = () => {
                                                 </div>
 
 
-                                                {/* TEMPERATURE */}
-
                                                 <strong>
 
                                                     {Math.round(
                                                         Number(
-                                                            hour.main?.temp ?? 0
+                                                            hour.main
+                                                                ?.temp ?? 0
                                                         )
                                                     )}
 
@@ -848,8 +1002,6 @@ const Home = () => {
 
                                                 </strong>
 
-
-                                                {/* RAIN */}
 
                                                 <small>
 
@@ -876,7 +1028,7 @@ const Home = () => {
 
 
                         {/* ========================================
-                            5 DAY FORECAST
+                            5 DAYS
                         ======================================== */}
 
                         {forecast.length > 0 && (
@@ -886,13 +1038,11 @@ const Home = () => {
 
                                 <div className="section-header">
 
-
                                     <div>
 
                                         <p>
                                             FORECAST
                                         </p>
-
 
                                         <h2>
                                             Next 5 days
@@ -910,7 +1060,6 @@ const Home = () => {
 
                                 <div className="forecast-grid">
 
-
                                     {forecast.map(
                                         (day, index) => (
 
@@ -919,9 +1068,11 @@ const Home = () => {
                                                         ? "active"
                                                         : ""
                                                     }`}
-                                                key={day.dt}
+                                                key={
+                                                    day.dt ||
+                                                    index
+                                                }
                                             >
-
 
                                                 <span>
 
@@ -946,7 +1097,8 @@ const Home = () => {
 
                                                     {Math.round(
                                                         Number(
-                                                            day.temp?.day ?? 0
+                                                            day.temp
+                                                                ?.day ?? 0
                                                         )
                                                     )}
 
@@ -958,7 +1110,13 @@ const Home = () => {
                                                 <small>
 
                                                     {day.weather?.[0]
-                                                        ?.description || "Unknown"}
+                                                        ?.description
+                                                        ?.replace(
+                                                            /\b\w/g,
+                                                            (letter) =>
+                                                                letter.toUpperCase()
+                                                        ) ||
+                                                        "Unknown"}
 
                                                 </small>
 
@@ -969,7 +1127,8 @@ const Home = () => {
 
                                                         {Math.round(
                                                             Number(
-                                                                day.temp?.min ?? 0
+                                                                day.temp
+                                                                    ?.min ?? 0
                                                             )
                                                         )}
 
@@ -982,7 +1141,8 @@ const Home = () => {
 
                                                         {Math.round(
                                                             Number(
-                                                                day.temp?.max ?? 0
+                                                                day.temp
+                                                                    ?.max ?? 0
                                                             )
                                                         )}
 
@@ -1012,7 +1172,6 @@ const Home = () => {
 
                             <section className="forecast-section">
 
-
                                 <div className="section-header">
 
                                     <div>
@@ -1020,7 +1179,6 @@ const Home = () => {
                                         <p>
                                             FORECAST
                                         </p>
-
 
                                         <h2>
                                             5-day forecast
@@ -1035,17 +1193,13 @@ const Home = () => {
 
                                     <FiSun />
 
-
                                     <p>
                                         Forecast is currently unavailable.
                                     </p>
 
-
                                     <span>
-
                                         Current weather data is
                                         working normally.
-
                                     </span>
 
                                 </div>
@@ -1056,13 +1210,11 @@ const Home = () => {
 
 
                         {/* ========================================
-                            WEATHER DETAILS
+                            DETAILS
                         ======================================== */}
 
                         <section className="details-grid">
 
-
-                            {/* SUNRISE */}
 
                             <div className="detail-card">
 
@@ -1077,21 +1229,16 @@ const Home = () => {
                                         Sunrise
                                     </small>
 
-
                                     <strong>
-
                                         {formatTime(
                                             weather.sys?.sunrise
                                         )}
-
                                     </strong>
 
                                 </div>
 
                             </div>
 
-
-                            {/* SUNSET */}
 
                             <div className="detail-card">
 
@@ -1106,21 +1253,16 @@ const Home = () => {
                                         Sunset
                                     </small>
 
-
                                     <strong>
-
                                         {formatTime(
                                             weather.sys?.sunset
                                         )}
-
                                     </strong>
 
                                 </div>
 
                             </div>
 
-
-                            {/* HUMIDITY */}
 
                             <div className="detail-card">
 
@@ -1135,19 +1277,15 @@ const Home = () => {
                                         Humidity
                                     </small>
 
-
                                     <strong>
-
-                                        {weather.main?.humidity ?? 0}%
-
+                                        {weather.main
+                                            ?.humidity ?? 0}%
                                     </strong>
 
                                 </div>
 
                             </div>
 
-
-                            {/* WIND */}
 
                             <div className="detail-card">
 
@@ -1162,11 +1300,13 @@ const Home = () => {
                                         Wind speed
                                     </small>
 
-
                                     <strong>
 
                                         {Math.round(
-                                            (weather.wind?.speed ?? 0) * 3.6
+                                            (
+                                                weather.wind
+                                                    ?.speed ?? 0
+                                            ) * 3.6
                                         )}
 
                                         km/h
@@ -1195,7 +1335,6 @@ const Home = () => {
                 <span>
                     Adam Weather
                 </span>
-
 
                 <span>
                     Real weather data • 2026
